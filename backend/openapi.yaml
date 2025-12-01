@@ -1,0 +1,1187 @@
+openapi: 3.0.3
+info:
+  title: CreatorIQ API
+  description: |
+    AI Creator Growth Intelligence Platform - YouTube analytics + AI scripting SaaS
+    
+    ## Overview
+    CreatorIQ provides AI-powered YouTube growth intelligence including:
+    - Competitor analysis and tracking
+    - Content gap detection
+    - AI script generation with hooks
+    - Thumbnail intelligence
+    - Trend radar
+    - Audience psychology insights
+    
+    ## Authentication
+    All endpoints (except `/auth/*`) require a JWT Bearer token in the Authorization header.
+    
+    ## Rate Limiting
+    API requests are rate-limited to ensure fair usage:
+    - Free tier: 100 requests/minute
+    - Pro tier: 1000 requests/minute
+    - Agency tier: 5000 requests/minute
+    
+    ## Errors
+    All errors follow a consistent format:
+    ```json
+    {
+      "detail": "Error message",
+      "code": "ERROR_CODE"
+    }
+    ```
+  version: 1.0.0
+  contact:
+    name: CreatorIQ Support
+    email: support@creatoriq.io
+  license:
+    name: Proprietary
+    url: https://creatoriq.io/terms
+  x-logo:
+    url: https://creatoriq.io/logo.png
+
+servers:
+  - url: https://api.creatoriq.io/api/v1
+    description: Production server
+    variables:
+      scheme:
+        default: https
+        enum: [http, https]
+  - url: https://staging-api.creatoriq.io/api/v1
+    description: Staging server
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: auth
+    description: Authentication and user management
+    externalDocs:
+      description: Auth flow documentation
+      url: https://docs.creatoriq.io/auth
+  - name: channels
+    description: YouTube channel connection and management
+    externalDocs:
+      description: Channel integration guide
+      url: https://docs.creatoriq.io/channels
+  - name: competitors
+    description: Competitor tracking and analysis
+    externalDocs:
+      description: Competitor analysis docs
+      url: https://docs.creatoriq.io/competitors
+  - name: gaps
+    description: Content gap detection
+    externalDocs:
+      description: Gap detection guide
+      url: https://docs.creatoriq.io/gaps
+  - name: scripts
+    description: AI script generation
+    externalDocs:
+      description: Script generator docs
+      url: https://docs.creatoriq.io/scripts
+  - name: hooks
+    description: Hook intelligence and optimization
+    externalDocs:
+      description: Hook optimization guide
+      url: https://docs.creatoriq.io/hooks
+  - name: thumbnails
+    description: Thumbnail analysis and recommendations
+    externalDocs:
+      description: Thumbnail AI docs
+      url: https://docs.creatoriq.io/thumbnails
+  - name: trends
+    description: Viral trend detection and tracking
+    externalDocs:
+      description: Trend radar docs
+      url: https://docs.creatoriq.io/trends
+  - name: audience
+    description: Audience psychology and insights
+    externalDocs:
+      description: Audience analysis docs
+      url: https://docs.creatoriq.io/audience
+  - name: health
+    description: Health check endpoints
+  - name: root
+    description: Root API information
+
+paths:
+  /:
+    get:
+      tags: [root]
+      summary: API Root
+      description: Returns API name, version, and docs URL
+      operationId: getRoot
+      responses:
+        '200':
+          description: API information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: CreatorIQ API
+                  version:
+                    type: string
+                    example: 1.0.0
+                  docs:
+                    type: string
+                    example: /docs
+
+  /health:
+    get:
+      tags: [health]
+      summary: Health Check
+      description: Health check endpoint for monitoring and load balancers
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: CreatorIQ API
+
+  # Auth Endpoints
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register new user
+      description: |
+        Register a new user account with email and password.
+        Password must be at least 8 characters.
+        After registration, use `/auth/login` to get an access token.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+            example:
+              email: creator@example.com
+              password: mysecretpassword
+              full_name: John Creator
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: User login
+      description: |
+        Authenticate user and return JWT token.
+        Uses OAuth2 password flow - send username (email) and password in form data.
+        Token expires based on ACCESS_TOKEN_EXPIRE_MINUTES setting (default: 7 days).
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: creator@example.com
+              password: mysecretpassword
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            API-Version:
+              schema:
+                type: string
+              description: Current API version
+              example: "1.0.0"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get current user
+      description: |
+        Returns the profile of the currently authenticated user.
+        Requires valid JWT token in Authorization header.
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/google/callback:
+    post:
+      tags: [auth]
+      summary: Google OAuth callback
+      description: |
+        Exchange Google OAuth authorization code for CreatorIQ JWT token.
+        Frontend sends the authorization code received from Google OAuth flow.
+        
+        Required Google OAuth scopes:
+        - openid
+        - email
+        - profile
+        - https://www.googleapis.com/auth/youtube.readonly
+        
+        [Google OAuth Setup Guide](https://developers.google.com/identity/protocols/oauth2/web-server)
+      operationId: googleOAuthCallback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: Authorization code from Google OAuth
+      responses:
+        '200':
+          description: OAuth exchange successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: bearer
+                  user:
+                    $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: OAuth exchange failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Channel Endpoints
+  /channels/connect:
+    post:
+      tags: [channels]
+      summary: Connect YouTube channel
+      description: |
+        Connect a YouTube channel to the user's account.
+        The youtube_channel_id can be a channel ID (starts with UC...) or a handle (@username).
+        
+        Triggers full background analysis immediately after connection:
+        - Video metadata fetch (up to 50 recent videos)
+        - Transcript extraction for top videos
+        - AI creator profile analysis
+        
+        Analysis typically takes 2-3 minutes to complete.
+      operationId: connectChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectChannelRequest'
+            example:
+              youtube_channel_id: "UCxxxxxxxxxxxxxxxxxxxxxxx"
+      responses:
+        '201':
+          description: Channel connected and analysis queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelResponse'
+        '400':
+          description: Channel already connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Channel not found on YouTube
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /channels/:
+    get:
+      tags: [channels]
+      summary: List connected channels
+      description: Returns all YouTube channels connected to the current user's account.
+      operationId: listChannels
+      responses:
+        '200':
+          description: List of connected channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChannelResponse'
+
+  /channels/{channel_id}:
+    get:
+      tags: [channels]
+      summary: Get channel details
+      description: Returns detailed information about a specific connected channel.
+      operationId: getChannel
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the connected channel
+      responses:
+        '200':
+          description: Channel details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelResponse'
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /channels/{channel_id}/re-analyze:
+    post:
+      tags: [channels]
+      summary: Trigger channel re-analysis
+      description: |
+        Re-triggers full analysis of a channel's content and statistics.
+        This will:
+        - Re-fetch all video metadata
+        - Re-extract transcripts
+        - Regenerate AI insights
+        
+        Takes approximately 2-3 minutes to complete.
+      operationId: reAnalyzeChannel
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the channel to re-analyze
+      responses:
+        '200':
+          description: Re-analysis queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Re-analysis queued
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Competitor Endpoints
+  /competitors/{channel_id}/add:
+    post:
+      tags: [competitors]
+      summary: Add competitor channel
+      description: |
+        Add a competitor YouTube channel for tracking and analysis.
+        Analysis runs in background and typically takes 1-2 minutes.
+        
+        The analysis includes:
+        - Competitor channel statistics
+        - Top performing videos
+        - Content format analysis
+        - Emotional trigger identification
+        - Hook pattern extraction
+        - Thumbnail style analysis
+      operationId: addCompetitor
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the user's channel
+        - name: youtube_channel_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: YouTube channel ID (UC...) to add as competitor
+      responses:
+        '201':
+          description: Competitor added and analysis queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompetitorResponse'
+        '400':
+          description: Competitor already added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /competitors/{channel_id}/:
+    get:
+      tags: [competitors]
+      summary: List competitors
+      description: Returns all competitors being tracked for a specific channel.
+      operationId: listCompetitors
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the user's channel
+      responses:
+        '200':
+          description: List of competitors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CompetitorResponse'
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /competitors/{channel_id}/{competitor_id}:
+    get:
+      tags: [competitors]
+      summary: Get competitor details
+      description: Returns detailed analysis of a specific competitor.
+      operationId: getCompetitorDetail
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the user's channel
+        - name: competitor_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the competitor
+      responses:
+        '200':
+          description: Competitor details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompetitorResponse'
+        '404':
+          description: Channel or competitor not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [competitors]
+      summary: Remove competitor
+      description: Remove a competitor from tracking.
+      operationId: deleteCompetitor
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the user's channel
+        - name: competitor_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the competitor to remove
+      responses:
+        '204':
+          description: Competitor removed
+        '404':
+          description: Channel or competitor not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Gap Endpoints
+  /gaps/{channel_id}/detect:
+    post:
+      tags: [gaps]
+      summary: Detect content gaps
+      description: |
+        Trigger content gap detection for a channel.
+        Detection identifies topics your audience wants that competitors aren't covering.
+        
+        Takes approximately 30-60 seconds to complete.
+      operationId: detectContentGaps
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the channel to analyze
+      responses:
+        '200':
+          description: Gap detection queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Gap detection queued
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /gaps/{channel_id}/:
+    get:
+      tags: [gaps]
+      summary: List content gaps
+      description: Returns all content gaps for a channel, sorted by opportunity score (highest first).
+      operationId: listGaps
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the channel
+      responses:
+        '200':
+          description: List of content gaps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContentGapResponse'
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /gaps/{channel_id}/gaps/{gap_id}/acted-on:
+    post:
+      tags: [gaps]
+      summary: Mark gap as acted on
+      description: Mark a content gap as acted on (video created).
+      operationId: markGapActedOn
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the channel
+        - name: gap_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the gap to mark
+      responses:
+        '200':
+          description: Gap marked as acted on
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Gap marked as acted on
+        '404':
+          description: Channel or gap not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Script Endpoints
+  /scripts/generate:
+    post:
+      tags: [scripts]
+      summary: Generate script
+      description: |
+        Generates a complete YouTube script in 3 steps:
+        1. Title suggestions (3 options with different styles)
+        2. Hook generation (powerful 30-second opening)
+        3. Full script generation
+        
+        This is a blocking call that takes 15-30 seconds to complete.
+        For better UX, consider calling this asynchronously in production.
+      operationId: generateScript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScriptCreateRequest'
+            example:
+              topic: "How to build a React hook"
+              channel_id: "550e8400-e29b-41d4-a716-446655440000"
+              target_duration_minutes: 10
+              format_type: "educational"
+      responses:
+        '201':
+          description: Script generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScriptResponse'
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Script generation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /scripts/:
+    get:
+      tags: [scripts]
+      summary: List scripts
+      description: Returns all scripts generated by the current user, newest first.
+      operationId: listScripts
+      responses:
+        '200':
+          description: List of user scripts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScriptResponse'
+
+  /scripts/{script_id}:
+    get:
+      tags: [scripts]
+      summary: Get script
+      description: Returns a specific script by ID.
+      operationId: getScript
+      parameters:
+        - name: script_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the script
+      responses:
+        '200':
+          description: Script details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScriptResponse'
+        '404':
+          description: Script not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [scripts]
+      summary: Delete script
+      description: Delete a script permanently.
+      operationId: deleteScript
+      parameters:
+        - name: script_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the script to delete
+      responses:
+        '204':
+          description: Script deleted
+        '404':
+          description: Script not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from `/auth/login` or `/auth/google/callback`.
+        Include as: `Authorization: Bearer <token>`
+      x-introduction-url: https://docs.creatoriq.io/auth
+
+  schemas:
+    # Error Schema
+    Error:
+      type: object
+      description: Standard error response
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - EMAIL_ALREADY_REGISTERED
+            - INVALID_CREDENTIALS
+            - CHANNEL_ALREADY_CONNECTED
+            - CHANNEL_NOT_FOUND
+            - COMPETITOR_NOT_FOUND
+            - GAP_NOT_FOUND
+            - SCRIPT_NOT_FOUND
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - YOUTUBE_API_ERROR
+      required: [detail]
+
+    # User Schemas
+    UserCreate:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Valid email address (must be unique)
+          example: creator@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Password (min 8 characters)
+          example: mysecretpassword
+        full_name:
+          type: string
+          description: Optional display name
+          example: John Creator
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user identifier
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+        plan:
+          type: string
+          enum: [free, starter, pro, agency]
+          default: free
+        is_active:
+          type: boolean
+        is_verified:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          format: email
+          description: Email address (OAuth2 standard uses 'username')
+        password:
+          type: string
+          format: password
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        token_type:
+          type: string
+          example: bearer
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+          example: 604800
+
+    # Channel Schemas
+    ConnectChannelRequest:
+      type: object
+      required: [youtube_channel_id]
+      properties:
+        youtube_channel_id:
+          type: string
+          description: YouTube channel ID (starts with UC...) or handle (@username)
+          example: "UCxxxxxxxxxxxxxxxxxxxxxxx"
+
+    ChannelResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        youtube_channel_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        subscriber_count:
+          type: integer
+        video_count:
+          type: integer
+        view_count:
+          type: integer
+        thumbnail_url:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        niche:
+          type: string
+          nullable: true
+          description: AI-detected channel niche
+        niche_tags:
+          type: array
+          items:
+            type: string
+          description: AI-detected niche tags
+        audience_type:
+          type: string
+          nullable: true
+          description: AI-detected audience persona
+        personality_summary:
+          type: string
+          nullable: true
+          description: AI-generated creator persona description
+        speaking_style:
+          type: string
+          nullable: true
+          description: AI-detected speaking style
+        storytelling_structure:
+          type: string
+          nullable: true
+          description: AI-detected storytelling pattern
+        avg_views:
+          type: number
+        avg_engagement_rate:
+          type: number
+        avg_retention_rate:
+          type: number
+        upload_frequency_days:
+          type: number
+          nullable: true
+        best_upload_day:
+          type: string
+          nullable: true
+        best_upload_hour:
+          type: integer
+          nullable: true
+        last_analyzed_at:
+          type: string
+          format: date-time
+          nullable: true
+        analysis_status:
+          type: string
+          enum: [pending, running, done, failed]
+        created_at:
+          type: string
+          format: date-time
+
+    # Competitor Schemas
+    CompetitorResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        channel_id:
+          type: string
+          format: uuid
+        youtube_channel_id:
+          type: string
+        title:
+          type: string
+        subscriber_count:
+          type: integer
+        avg_views:
+          type: number
+        avg_engagement_rate:
+          type: number
+        niche_overlap_score:
+          type: number
+          description: 0-1 score of how similar to creator
+        why_they_succeed:
+          type: string
+          nullable: true
+        best_formats:
+          type: array
+          items:
+            type: string
+          description: Video formats they use (tutorial, review, story, etc.)
+        emotional_triggers_used:
+          type: array
+          items:
+            type: string
+          description: Emotions they consistently trigger
+        content_gaps:
+          type: array
+          items:
+            type: string
+          description: Topics they are NOT covering
+        hook_patterns:
+          type: array
+          items:
+            type: string
+          description: Patterns in how their top videos open
+        thumbnail_style:
+          type: string
+          nullable: true
+          description: Description of their thumbnail style
+        last_analyzed_at:
+          type: string
+          format: date-time
+          nullable: true
+        analysis_status:
+          type: string
+          enum: [pending, running, done, failed]
+        created_at:
+          type: string
+          format: date-time
+
+    # Content Gap Schemas
+    ContentGapResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        channel_id:
+          type: string
+          format: uuid
+        topic:
+          type: string
+          description: Gap topic/area
+        reason:
+          type: string
+          description: Why this gap exists
+        opportunity_score:
+          type: number
+          description: 0-10 how valuable this opportunity is
+        competition_level:
+          type: string
+          enum: [low, medium, high]
+        estimated_search_demand:
+          type: string
+          enum: [low, medium, high]
+        suggested_angle:
+          type: string
+          nullable: true
+          description: How creator should approach this topic
+        suggested_title:
+          type: string
+          nullable: true
+          description: YouTube title suggestion
+        supporting_evidence:
+          type: array
+          items:
+            type: string
+          description: Evidence for this gap
+        trend_direction:
+          type: string
+          enum: [rising, stable, declining]
+        source_type:
+          type: string
+          enum: [competitor_gap, search, comment, trend]
+          description: How this gap was detected
+        is_acted_on:
+          type: boolean
+          description: Whether creator has made a video on this
+        created_at:
+          type: string
+          format: date-time
+
+    # Script Schemas
+    ScriptCreateRequest:
+      type: object
+      required: [topic]
+      properties:
+        topic:
+          type: string
+          description: The video topic/idea
+          example: How to build a React hook
+        channel_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional - for personalized script based on channel style
+        target_duration_minutes:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 60
+          description: Target video length
+        format_type:
+          type: string
+          enum: [educational, story, list, review]
+          default: educational
+          description: Video format style
+
+    ScriptResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        channel_id:
+          type: string
+          format: uuid
+          nullable: true
+        topic:
+          type: string
+        target_duration_minutes:
+          type: integer
+        format_type:
+          type: string
+        tone:
+          type: string
+        title_suggestions:
+          type: array
+          items:
+            type: string
+          description: 3 title options
+        hook:
+          type: string
+          nullable: true
+          description: Opening 30-second hook
+        full_script:
+          type: string
+          nullable: true
+          description: Complete script text
+        cta_text:
+          type: string
+          nullable: true
+          description: Call to action text
+        short_form_adaptation:
+          type: string
+          nullable: true
+          description: 60-second short form version
+        thumbnail_concept:
+          type: string
+          nullable: true
+          description: Thumbnail concept suggestion
+        retention_notes:
+          type: string
+          nullable: true
+          description: Editing notes for retention
+        generation_status:
+          type: string
+          enum: [pending, generating, done, failed]
+        created_at:
+          type: string
+          format: date-time
+
+externalDocs:
+  description: Full CreatorIQ API Documentation
+  url: https://docs.creatoriq.io
