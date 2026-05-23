@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "@/store/useStore";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -7,17 +7,133 @@ import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
+import { Modal } from "@/components/ui/Modal";
+import { authApi } from "@/lib/api";
 import {
   User, Key, Bell, Palette, Users, CreditCard, Shield,
-  ExternalLink, Check, AlertCircle, Trash2
+  ExternalLink, Check, AlertCircle, Trash2, Zap, Star, Sparkles
 } from "lucide-react";
 
 export default function SettingsPage() {
-  const { activeChannel } = useStore();
+  const { activeChannel, user, setUser } = useStore();
   const [activeTab, setActiveTab] = useState("account");
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgrading, setUpgrading] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("upgrade") === "true") {
+        setShowUpgradeModal(true);
+        // Clear param from URL without reload
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, "", newUrl);
+      }
+    }
+  }, []);
+
+  const handleUpgrade = async (planId: string) => {
+    setUpgrading(planId);
+    setSuccessMessage("");
+    try {
+      const response = await authApi.updatePlan(planId);
+      setUser(response.data);
+      setSuccessMessage(`Successfully upgraded to the ${planId.toUpperCase()} plan!`);
+      setShowUpgradeModal(false);
+      setTimeout(() => setSuccessMessage(""), 5000);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setUpgrading(null);
+    }
+  };
+
+  const planInfo = {
+    free: { name: "Free", price: "$0/month", desc: "1 channel connected · 3 scripts/mo · 3 competitors" },
+    starter: { name: "Starter", price: "$19/month", desc: "1 channel connected · 15 scripts/mo · 5 competitors" },
+    pro: { name: "Pro", price: "$49/month", desc: "5 channels connected · Unlimited scripts · 10 competitors" },
+    agency: { name: "Agency", price: "$149/month", desc: "25 channels connected · Unlimited scripts · 25 competitors" },
+  };
+
+  const currentPlan = user?.plan || "free";
+  const planDetails = planInfo[currentPlan as keyof typeof planInfo] || planInfo.free;
+
+  const pricingPlans = [
+    {
+      id: "free",
+      name: "Free",
+      price: "$0",
+      desc: "For creators starting out",
+      features: [
+        "1 Connected Channel",
+        "3 AI Scripts / month",
+        "3 Competitors tracked",
+        "100k Monthly Token Budget",
+        "Standard intelligence",
+      ],
+      icon: User,
+      color: "text-gray-400 border-gray-700/50 bg-gray-950/20",
+    },
+    {
+      id: "starter",
+      name: "Starter",
+      price: "$19",
+      desc: "For growing creators",
+      features: [
+        "1 Connected Channel",
+        "15 AI Scripts / month",
+        "5 Competitors tracked",
+        "500k Monthly Token Budget",
+        "Advanced intelligence",
+      ],
+      icon: Sparkles,
+      color: "text-brand-400 border-brand-800/40 bg-brand-950/10",
+    },
+    {
+      id: "pro",
+      name: "Pro",
+      price: "$49",
+      desc: "Our most popular tier",
+      features: [
+        "5 Connected Channels",
+        "Unlimited AI Scripts",
+        "10 Competitors tracked",
+        "2M Monthly Token Budget",
+        "Real-time gap detection",
+        "Priority AI analysis",
+      ],
+      icon: Zap,
+      color: "text-indigo-400 border-indigo-800/40 bg-indigo-950/10",
+      popular: true,
+    },
+    {
+      id: "agency",
+      name: "Agency",
+      price: "$149",
+      desc: "For production teams",
+      features: [
+        "25 Connected Channels",
+        "Unlimited AI Scripts",
+        "25 Competitors tracked",
+        "10M Monthly Token Budget",
+        "All features unlocked",
+        "24/7 dedicated support",
+      ],
+      icon: Star,
+      color: "text-accent-yellow border-accent-yellow/30 bg-accent-yellow/5",
+    },
+  ];
 
   return (
     <div className="space-y-6">
+      {successMessage && (
+        <div className="bg-accent-green/10 border border-accent-green/20 rounded-xl p-4 flex items-center gap-3 text-accent-green text-sm animate-pulse">
+          <Check className="w-5 h-5 flex-shrink-0" />
+          <span className="font-medium">{successMessage}</span>
+        </div>
+      )}
+
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="text-gray-400 text-sm mt-1">
@@ -105,16 +221,110 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between p-4 bg-surface-elevated rounded-lg">
               <div>
                 <div className="flex items-center gap-2">
-                  <Badge variant="brand">Pro</Badge>
-                  <span className="text-white font-medium">$29/month</span>
+                  <Badge variant="success" className="capitalize">{currentPlan}</Badge>
+                  <span className="text-white font-medium">{planDetails.price}</span>
                 </div>
                 <p className="text-gray-400 text-sm mt-1">
-                  Unlimited channels, AI analysis, competitor tracking
+                  {planDetails.desc}
                 </p>
               </div>
-              <Button variant="ghost">Manage Plan</Button>
+              <Button variant="ghost" onClick={() => setShowUpgradeModal(true)}>Manage Plan</Button>
             </div>
           </Card>
+
+          {/* Upgrade Subscription Modal */}
+          <Modal
+            isOpen={showUpgradeModal}
+            onClose={() => setShowUpgradeModal(false)}
+            title="Upgrade Subscription Plan"
+          >
+            <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
+              <p className="text-gray-400 text-sm">
+                Scale your channel growth with one of our premium tiers. Choose the plan that best fits your workflow.
+              </p>
+
+              <div className="grid grid-cols-1 gap-4">
+                {pricingPlans.map((plan) => {
+                  const Icon = plan.icon;
+                  const isActive = currentPlan === plan.id;
+                  
+                  return (
+                    <div
+                      key={plan.id}
+                      className={`relative p-5 rounded-2xl border transition-all duration-300 ${
+                        isActive
+                          ? "border-brand-500 bg-brand-500/10 shadow-lg shadow-brand-500/10"
+                          : plan.popular
+                          ? "border-indigo-500/50 hover:border-indigo-400 bg-surface-elevated"
+                          : "border-surface-border hover:border-gray-700 bg-surface-elevated"
+                      }`}
+                    >
+                      {plan.popular && (
+                        <span className="absolute top-3 right-3 text-[10px] bg-indigo-600 text-white font-bold px-2 py-0.5 rounded-full shadow">
+                          POPULAR
+                        </span>
+                      )}
+
+                      <div className="flex items-start gap-4">
+                        <div className={`p-2.5 rounded-xl border ${plan.color}`}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-baseline justify-between">
+                            <h4 className="text-white font-semibold flex items-center gap-2 text-base">
+                              {plan.name}
+                              {isActive && (
+                                <Badge variant="success" className="text-[10px] px-1.5 py-0.5">Active</Badge>
+                              )}
+                            </h4>
+                            <div className="text-right">
+                              <span className="text-white font-bold text-xl">{plan.price}</span>
+                              <span className="text-gray-500 text-xs">/mo</span>
+                            </div>
+                          </div>
+                          <p className="text-gray-400 text-xs leading-relaxed">{plan.desc}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t border-surface-border flex items-center justify-between gap-4">
+                        <ul className="grid grid-cols-2 gap-x-4 gap-y-1 flex-1">
+                          {plan.features.slice(0, 4).map((feature) => (
+                            <li key={feature} className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                              <Check className="w-3 h-3 text-brand-400 flex-shrink-0" />
+                              <span className="truncate">{feature}</span>
+                            </li>
+                          ))}
+                        </ul>
+
+                        <Button
+                          variant={isActive ? "outline" : plan.popular ? "default" : "ghost"}
+                          disabled={isActive || upgrading !== null}
+                          size="sm"
+                          onClick={() => handleUpgrade(plan.id)}
+                          className="flex-shrink-0 hover:scale-[1.03] active:scale-[0.97] transition-all"
+                        >
+                          {upgrading === plan.id ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : isActive ? (
+                            "Current Plan"
+                          ) : (
+                            "Select"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-surface-border">
+                <Button variant="ghost" onClick={() => setShowUpgradeModal(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </Modal>
 
           {/* Danger Zone */}
           <Card className="p-5 border-accent-red/30">

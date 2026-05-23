@@ -26,10 +26,10 @@ CRITICAL_THRESHOLD = 0.90  # 90% of limit
 class TokenBudgetManager:
     """
     Manages token usage budgets per user based on subscription plan.
-    Tracks usage in-memory and periodically persists to database.
+    Tracks usage in Redis for persistence across deploys, with in-memory fallback.
     """
     
-    # In-memory tracking (reset on restart - in production, use Redis)
+    # In-memory tracking (fallback if Redis unavailable)
     _usage_cache: Dict[str, Dict] = {}
     _last_reset: Dict[str, datetime] = {}
     
@@ -38,8 +38,11 @@ class TokenBudgetManager:
         """Get user's subscription plan from database."""
         try:
             user = db.query(User).filter(User.id == user_id).first()
-            if user and hasattr(user, 'subscription_tier'):
-                return user.subscription_tier or "free"
+            if user:
+                if hasattr(user, 'plan'):
+                    return user.plan or "free"
+                elif hasattr(user, 'subscription_tier'):
+                    return getattr(user, 'subscription_tier') or "free"
         except Exception as e:
             logger.warning(f"Could not fetch user plan: {e}")
         return "free"
@@ -59,6 +62,12 @@ class TokenBudgetManager:
             return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
     @classmethod
+    def _get_redis_key(cls, user_id: str) -> str:
+        """Get Redis key for current month's token usage."""
+        month = datetime.utcnow().strftime('%Y-%m')
+        return f"token_budget:{user_id}:{month}"
+    
+    @classmethod
     def _init_user_tracking(cls, user_id: str):
         """Initialize tracking for a user if not exists."""
         if user_id not in cls._usage_cache:
@@ -73,13 +82,17 @@ class TokenBudgetManager:
     def track_tokens(cls, user_id: str, input_tokens: int, output_tokens: int = 0):
         """
         Track token usage for a user.
-        Call this after each AI API call.
+        Persists to Redis for durability across deploys.
+        Falls back to in-memory if Redis unavailable.
         
         Args:
             user_id: User ID
             input_tokens: Number of input tokens used
             output_tokens: Number of output tokens used
         """
+        total_tokens = input_tokens + output_tokens
+        
+        # Track in-memory (immediate, always works)
         cls._init_user_tracking(user_id)
         
         now = datetime.utcnow()
@@ -97,13 +110,45 @@ class TokenBudgetManager:
         # Track daily usage for finer granularity
         today = now.date().isoformat()
         daily = cls._usage_cache[user_id].get("daily_usage", {})
-        daily[today] = daily.get(today, 0) + input_tokens + output_tokens
+        daily[today] = daily.get(today, 0) + total_tokens
         cls._usage_cache[user_id]["daily_usage"] = daily
         
-        cls._usage_cache[user_id]["tokens_used"] += input_tokens + output_tokens
+        cls._usage_cache[user_id]["tokens_used"] += total_tokens
         cls._usage_cache[user_id]["requests_count"] += 1
         
-        logger.debug(f"Token usage tracked for {user_id}: {input_tokens + output_tokens} tokens")
+        logger.debug(f"Token usage tracked for {user_id}: {total_tokens} tokens")
+        
+        # Persist to Redis (fire-and-forget, non-blocking)
+        cls._persist_to_redis(user_id, total_tokens)
+    
+    @classmethod
+    def _persist_to_redis(cls, user_id: str, tokens: int):
+        """Persist token usage to Redis with monthly auto-expiry."""
+        try:
+            import redis as sync_redis
+            from app.config import settings
+            r = sync_redis.from_url(settings.REDIS_URL, decode_responses=True)
+            key = cls._get_redis_key(user_id)
+            r.incrby(key, tokens)
+            # Set expiry to 35 days (covers full month + buffer)
+            r.expire(key, 86400 * 35)
+            r.close()
+        except Exception as e:
+            logger.debug(f"Redis token persist failed (using in-memory): {e}")
+    
+    @classmethod
+    def _get_redis_usage(cls, user_id: str) -> int:
+        """Get token usage from Redis for current month."""
+        try:
+            import redis as sync_redis
+            from app.config import settings
+            r = sync_redis.from_url(settings.REDIS_URL, decode_responses=True)
+            key = cls._get_redis_key(user_id)
+            usage = r.get(key)
+            r.close()
+            return int(usage) if usage else 0
+        except Exception:
+            return 0
     
     @classmethod
     def get_usage(cls, user_id: str, plan: str, period_type: str = "monthly") -> Dict:
@@ -121,7 +166,12 @@ class TokenBudgetManager:
         cls._init_user_tracking(user_id)
         
         limit = cls.get_token_limit(plan)
-        used = cls._usage_cache[user_id]["tokens_used"]
+        
+        # Prefer Redis (persisted) over in-memory (ephemeral)
+        redis_usage = cls._get_redis_usage(user_id)
+        memory_usage = cls._usage_cache[user_id]["tokens_used"]
+        used = max(redis_usage, memory_usage)  # Use whichever is higher (most accurate)
+        
         requests = cls._usage_cache[user_id]["requests_count"]
         
         if period_type == "daily":

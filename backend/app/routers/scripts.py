@@ -41,6 +41,40 @@ def generate_script(
             Channel.user_id == current_user.id
         ).first()
 
+    # Enforce plan limits for monthly script generation
+    from datetime import datetime
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    script_count = db.query(Script).filter(
+        Script.user_id == current_user.id,
+        Script.created_at >= month_start
+    ).count()
+    
+    plan_script_limits = {
+        "free": 3,
+        "starter": 15,
+        "pro": 99999,
+        "agency": 99999
+    }
+    
+    user_plan = current_user.plan or "free"
+    limit = plan_script_limits.get(user_plan, 3)
+    if script_count >= limit:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Script generation limit reached for {user_plan.capitalize()} plan ({limit} script{'s' if limit > 1 else ''} per month). Please upgrade to generate more."
+        )
+
+    # Enforce daily/monthly token budget limits
+    from app.services.token_budget import TokenBudgetManager
+    usage = TokenBudgetManager.get_usage(str(current_user.id), user_plan)
+    if not usage["can_proceed"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Token budget exceeded for the current billing period. Please upgrade your plan."
+        )
+
     # Create script record
     script = Script(
         user_id=current_user.id,

@@ -95,6 +95,22 @@ def add_competitor(
     if existing:
         raise HTTPException(status_code=400, detail="Competitor already added")
 
+    # Enforce plan limits for competitor tracking count
+    comp_count = db.query(Competitor).filter(Competitor.channel_id == channel_id).count()
+    plan_comp_limits = {
+        "free": 3,
+        "starter": 5,
+        "pro": 10,
+        "agency": 25
+    }
+    user_plan = current_user.plan or "free"
+    limit = plan_comp_limits.get(user_plan, 3)
+    if comp_count >= limit:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Competitor limit reached for {user_plan.capitalize()} plan ({limit} competitor{'s' if limit > 1 else ''}). Please upgrade to add more."
+        )
+
     comp = Competitor(
         channel_id=channel_id,
         youtube_channel_id=youtube_channel_id,

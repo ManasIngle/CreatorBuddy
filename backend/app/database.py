@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 engine = create_engine(
     settings.DATABASE_URL,
     poolclass=QueuePool,
-    pool_size=20,              # Base number of persistent connections
-    max_overflow=30,           # Additional connections under load
+    pool_size=5,               # Base connections - adequate for MVP
+    max_overflow=10,           # Burst capacity without exhausting DB
     pool_pre_ping=True,         # Verify connections before use
     pool_timeout=30,            # Seconds to wait for connection
     pool_recycle=1800,         # Recycle connections after 30 min

@@ -30,6 +30,13 @@ export default function HooksPage() {
   const [topic, setTopic] = useState("");
   const [generating, setGenerating] = useState(false);
   const [selectedHook, setSelectedHook] = useState<Hook | null>(null);
+  const [generateError, setGenerateError] = useState("");
+
+  const handleOpenGenerateModal = () => {
+    setGenerateError("");
+    setTopic("");
+    setShowGenerateModal(true);
+  };
 
   useEffect(() => {
     async function loadHooks() {
@@ -48,14 +55,16 @@ export default function HooksPage() {
   const handleGenerateHooks = async () => {
     if (!activeChannel || !topic.trim()) return;
     setGenerating(true);
+    setGenerateError("");
     try {
       await hooksApi.generate(activeChannel.id, topic.trim());
       const response = await hooksApi.list(activeChannel.id);
       setHooks(response.data);
       setShowGenerateModal(false);
       setTopic("");
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to generate hooks", e);
+      setGenerateError(e.response?.data?.detail || "Failed to generate hooks. Please try again.");
     } finally {
       setGenerating(false);
     }
@@ -85,7 +94,7 @@ export default function HooksPage() {
           </p>
         </div>
         <Button
-          onClick={() => setShowGenerateModal(true)}
+          onClick={handleOpenGenerateModal}
           disabled={!activeChannel}
           className="flex items-center gap-2"
         >
@@ -189,6 +198,11 @@ export default function HooksPage() {
               placeholder="Enter your video topic..."
             />
           </div>
+          {generateError && (
+            <div className="bg-accent-red/10 border border-accent-red/20 rounded-lg p-3 text-accent-red text-xs">
+              {generateError}
+            </div>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setShowGenerateModal(false)}>
               Cancel

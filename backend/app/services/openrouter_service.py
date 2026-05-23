@@ -21,17 +21,17 @@ MODEL_COSTS = {
     # Cost per million tokens (input, output) - approximate values
     "openai/gpt-4o-mini": (0.15, 0.60),
     "openai/gpt-4o": (2.50, 10.00),
-    "anthropic/claude-3-haiku": (0.25, 1.25),
-    "anthropic/claude-3-sonnet": (3.00, 15.00),
-    "meta-llama/llama-3-8b-instruct": (0.20, 0.20),
+    "anthropic/claude-3.5-haiku": (0.80, 4.00),
+    "anthropic/claude-3.5-sonnet": (3.00, 15.00),
+    "meta-llama/llama-3.1-8b-instruct": (0.05, 0.05),
     "mistralai/mixtral-8x7b": (0.24, 0.24),
-    "google/gemini-pro": (0.25, 1.00),
+    "google/gemini-flash-1.5": (0.075, 0.30),
 }
 
 # Model mappings for OpenRouter (provider/model format)
 # Default models for different tasks
 DEFAULT_LLM_MODEL = getattr(settings, 'LLM_MODEL', 'openai/gpt-4o-mini')
-DEFAULT_VISION_MODEL = getattr(settings, 'VISION_MODEL', 'anthropic/claude-3-haiku')
+DEFAULT_VISION_MODEL = getattr(settings, 'VISION_MODEL', 'anthropic/claude-3.5-haiku')
 DEFAULT_EMBEDDING_MODEL = getattr(settings, 'EMBEDDING_MODEL', 'openai/gpt-4o-mini')
 
 # Create OpenRouter client
@@ -50,13 +50,13 @@ def _get_model_for_complexity(complexity: str = "medium") -> str:
     Select appropriate model based on task complexity for cost optimization.
     
     Complexity levels:
-    - ultra_cheap: Llama 3 for simple extractions, classifications
+    - ultra_cheap: Llama 3.1 for simple extractions, classifications
     - simple: Fast, cheap models for basic transformations
     - medium: Balanced models for standard tasks  
     - complex: Premium models for nuanced analysis
     """
     if complexity == "ultra_cheap":
-        return "meta-llama/llama-3-8b-instruct"
+        return "meta-llama/llama-3.1-8b-instruct"
     elif complexity == "simple":
         return "openai/gpt-4o-mini"  # Using mini for simple tasks
     elif complexity == "complex":

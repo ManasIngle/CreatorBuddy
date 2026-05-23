@@ -57,6 +57,24 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-surface-border">
+        {user?.plan === "free" && (
+          <div className="bg-gradient-to-r from-brand-600 to-indigo-600 p-4 rounded-xl mb-4 text-white space-y-2 border border-brand-500/30 shadow-lg relative overflow-hidden group">
+            <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+            <h4 className="font-semibold text-xs flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-brand-300 animate-pulse" />
+              Unlock Pro Features
+            </h4>
+            <p className="text-[10px] text-brand-100 leading-relaxed">
+              Get unlimited scripts, competitor tracking & deeper research.
+            </p>
+            <Link
+              href="/settings?upgrade=true"
+              className="block w-full text-center bg-white text-brand-600 font-semibold text-[11px] py-1.5 rounded-lg hover:bg-brand-50 hover:scale-[1.02] active:scale-[0.98] transition-all"
+            >
+              Upgrade Now
+            </Link>
+          </div>
+        )}
         <div className="flex items-center gap-3 mb-3">
           <div className="w-8 h-8 rounded-full bg-brand-600/30 flex items-center justify-center text-brand-400 text-sm font-semibold">
             {user?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || "?"}

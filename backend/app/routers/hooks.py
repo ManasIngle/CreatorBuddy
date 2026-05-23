@@ -37,6 +37,15 @@ def generate_hooks(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
+    # Enforce daily/monthly token budget limits
+    from app.services.token_budget import TokenBudgetManager
+    usage = TokenBudgetManager.get_usage(str(current_user.id), current_user.plan or "free")
+    if not usage["can_proceed"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Token budget exceeded for the current billing period. Please upgrade your plan."
+        )
+
     hooks_data = hook_engine.generate_hooks_for_topic(
         topic=request.topic,
         channel=channel,

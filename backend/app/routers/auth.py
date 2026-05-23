@@ -130,3 +130,22 @@ async def google_oauth_callback(
     db.refresh(user)
     jwt_token = create_access_token({"sub": str(user.id)})
     return {"access_token": jwt_token, "token_type": "bearer", "user": user}
+
+@router.put("/plan", response_model=UserResponse, tags=["auth"])
+def update_user_plan(
+    plan_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update the subscription plan of the current user.
+    """
+    new_plan = plan_data.get("plan")
+    if new_plan not in ["free", "starter", "pro", "agency"]:
+        raise HTTPException(status_code=400, detail="Invalid plan name")
+    
+    current_user.plan = new_plan
+    db.commit()
+    db.refresh(current_user)
+    logger.info(f"User {current_user.email} updated plan to {new_plan}")
+    return current_user

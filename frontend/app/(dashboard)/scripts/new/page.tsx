@@ -37,7 +37,7 @@ export default function NewScriptPage() {
       });
       router.push(`/scripts/${resp.data.id}`);
     } catch (e: any) {
-      setError("Script generation failed. Please try again.");
+      setError(e.response?.data?.detail || "Script generation failed. Please try again.");
     } finally {
       setLoading(false);
     }

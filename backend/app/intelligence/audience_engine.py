@@ -46,7 +46,8 @@ class AudienceEngine:
             response = call_openai(
                 system_prompt="You are an audience analyst. Return JSON only.",
                 user_prompt=prompt,
-                response_format="json"
+                response_format="json",
+                complexity="simple"
             )
             return safe_json_loads(response)
         except Exception as e:

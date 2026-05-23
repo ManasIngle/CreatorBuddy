@@ -60,7 +60,8 @@ class GapDetector:
                 system_prompt="You are a content strategist. Return JSON only. Be concise.",
                 user_prompt=prompt,
                 response_format="json",
-                complexity="medium"
+                complexity="medium",
+                max_tokens=800
             )
             gaps = safe_json_loads(ai_response)
             if isinstance(gaps, dict) and "gaps" in gaps:

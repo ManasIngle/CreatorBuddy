@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # OpenRouter model configuration
     LLM_MODEL: str = "openai/gpt-4o-mini"  # Default for content generation
-    VISION_MODEL: str = "anthropic/claude-3-haiku"  # For thumbnail vision analysis
+    VISION_MODEL: str = "anthropic/claude-3.5-haiku"  # For thumbnail vision analysis
     EMBEDDING_MODEL: str = "openai/gpt-4o-mini"  # For embeddings (falls back to text-embedding-3-small)
     
     # OpenRouter site info for analytics

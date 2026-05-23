@@ -9,7 +9,7 @@ from typing import Optional, List
 import logging
 
 from app.services.scraper_service import scraper_service
-from app.services.openai_service import openai_service
+from app.services.openrouter_service import call_openai, safe_json_loads
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/research", tags=["research"])
@@ -75,10 +75,11 @@ async def research_topic(request: TopicResearchRequest):
         Format your response as a structured analysis.
         """
         
-        synthesis = await openai_service.generate_response(
-            prompt=synthesis_prompt,
+        synthesis = call_openai(
             system_prompt="You are an expert content strategist analyzing research data.",
-            max_tokens=2000
+            user_prompt=synthesis_prompt,
+            max_tokens=1000,
+            complexity="medium"
         )
         
         return {
@@ -137,10 +138,11 @@ async def research_competitor(request: CompetitorResearchRequest):
         4. Potential gaps to exploit
         """
         
-        analysis = await openai_service.generate_response(
-            prompt=analysis_prompt,
+        analysis = call_openai(
             system_prompt="You are a competitor analysis expert.",
-            max_tokens=2000
+            user_prompt=analysis_prompt,
+            max_tokens=1000,
+            complexity="medium"
         )
         
         competitor_data["ai_analysis"] = analysis
@@ -200,10 +202,11 @@ async def research_trends(request: TrendResearchRequest):
         4. Timing recommendations
         """
         
-        synthesis = await openai_service.generate_response(
-            prompt=synthesis_prompt,
+        synthesis = call_openai(
             system_prompt="You are a trend analysis expert.",
-            max_tokens=2000
+            user_prompt=synthesis_prompt,
+            max_tokens=1000,
+            complexity="medium"
         )
         
         trends_data["ai_synthesis"] = synthesis
@@ -261,10 +264,11 @@ async def research_audience(request: AudienceResearchRequest):
         4. Content angles that would resonate
         """
         
-        analysis = await openai_service.generate_response(
-            prompt=analysis_prompt,
+        analysis = call_openai(
             system_prompt="You are an audience research expert.",
-            max_tokens=2000
+            user_prompt=analysis_prompt,
+            max_tokens=1000,
+            complexity="medium"
         )
         
         audience_data["ai_analysis"] = analysis
@@ -337,10 +341,11 @@ async def deep_research(request: DeepResearchRequest):
         7. Content Ideas
         """
         
-        briefing_text = await openai_service.generate_response(
-            prompt=briefing_prompt,
+        briefing_text = call_openai(
             system_prompt="You are an expert content strategist and research analyst.",
-            max_tokens=4000
+            user_prompt=briefing_prompt,
+            max_tokens=2000,
+            complexity="complex"  # Deep research warrants premium model
         )
         
         briefing["comprehensive_briefing"] = briefing_text

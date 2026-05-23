@@ -6,7 +6,7 @@ from app.models.channel import Channel
 from app.models.analysis_job import AnalysisJob
 from app.utils.auth_utils import get_current_user
 from app.utils.base import BaseRouter, ETags, MetricsCollector, ValidationError, InputValidator
-from app.services.youtube_service import fetch_channel_details
+from app.services.youtube_service import fetch_channel_details, fetch_channel_details_cached
 from app.services.redis_cache import redis_cache, CacheKeys, CacheInvalidator
 from app.schemas.channel import ChannelResponse, ConnectChannelRequest, ChannelListResponse
 from typing import List, Optional
@@ -172,9 +172,25 @@ async def connect_channel(
     if existing:
         raise HTTPException(status_code=400, detail="Channel already connected")
 
+    # Enforce plan limits for maximum connected channels
+    channel_count = db.query(Channel).filter(Channel.user_id == current_user.id).count()
+    plan_limits = {
+        "free": 1,
+        "starter": 1,
+        "pro": 5,
+        "agency": 25
+    }
+    user_plan = current_user.plan or "free"
+    limit = plan_limits.get(user_plan, 1)
+    if channel_count >= limit:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Channel limit reached for {user_plan.capitalize()} plan ({limit} channel{'s' if limit > 1 else ''}). Please upgrade to connect more."
+        )
+
     # Fetch basic channel info from YouTube
     try:
-        yt_data = fetch_channel_details(validated_channel_id)
+        yt_data = await fetch_channel_details_cached(validated_channel_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

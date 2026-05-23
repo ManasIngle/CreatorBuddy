@@ -25,7 +25,8 @@ class ScriptGenerator:
             response = call_openai(
                 system_prompt="You are a YouTube title expert. Return JSON only.",
                 user_prompt=prompt,
-                response_format="json"
+                response_format="json",
+                complexity="simple"
             )
             data = safe_json_loads(response)
             return data.get("titles", [])
@@ -45,7 +46,8 @@ class ScriptGenerator:
         try:
             return call_openai(
                 system_prompt="You are an expert at writing viral YouTube hooks. Write the hook only, no preamble.",
-                user_prompt=prompt
+                user_prompt=prompt,
+                complexity="simple"
             )
         except Exception as e:
             logger.error(f"Hook generation failed: {e}")
@@ -77,7 +79,8 @@ class ScriptGenerator:
             script_text = call_openai(
                 system_prompt="You are a professional YouTube scriptwriter. Write complete, detailed scripts.",
                 user_prompt=prompt,
-                max_tokens=4000  # Full script needs high token limit
+                max_tokens=4000,  # Full script needs high token limit
+                complexity="complex"  # Full scripts need premium quality
             )
             return {
                 "full_script": script_text,

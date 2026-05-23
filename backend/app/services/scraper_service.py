@@ -9,8 +9,52 @@ from typing import Optional
 from datetime import datetime, timedelta
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
+import re
+from html.parser import HTMLParser
+from app.utils.cache_manager import scraped_data_cache
 
 logger = logging.getLogger(__name__)
+
+
+class HTMLTextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.result = []
+        self.ignore_tags = {"script", "style", "head", "title", "meta", "link", "noscript"}
+        self.current_tag = None
+
+    def handle_starttag(self, tag, attrs):
+        self.current_tag = tag
+
+    def handle_endtag(self, tag):
+        if self.current_tag == tag:
+            self.current_tag = None
+
+    def handle_data(self, data):
+        if self.current_tag not in self.ignore_tags:
+            text = data.strip()
+            if text:
+                self.result.append(text)
+
+    def get_text(self):
+        return "\n".join(self.result)
+
+
+def clean_html(html_content: str) -> str:
+    """Extract clean, readable text from raw HTML to feed to the LLM."""
+    try:
+        # Strip comments
+        html_content = re.sub(r"<!--.*?-->", "", html_content, flags=re.DOTALL)
+        parser = HTMLTextExtractor()
+        parser.feed(html_content)
+        text = parser.get_text()
+        # Compress multiple blank lines
+        text = re.sub(r"\n\s*\n+", "\n\n", text)
+        return text[:8000]  # Limit to 8k of clean text
+    except Exception as e:
+        logger.warning(f"HTML cleanup failed: {e}")
+        return html_content[:4000]  # Fallback to truncated raw html
+
 
 
 class ScraperService:
@@ -63,7 +107,7 @@ class ScraperService:
                 response = await client.get(url)
                 response.raise_for_status()
                 return {
-                    "markdown": response.text[:10000],  # Limit to 10k chars
+                    "markdown": clean_html(response.text),
                     "metadata": {
                         "title": url,
                         "description": "",
@@ -108,6 +152,11 @@ class ScraperService:
         Scrape multiple sources for trend data (Reddit, Twitter, news)
         Returns list of trend data points
         """
+        cached = scraped_data_cache.trend_cache.get(topic)
+        if cached is not None:
+            logger.debug(f"Cache hit for trend aggregator: {topic}")
+            return cached
+
         trends = []
         
         # Sources to scrape for trends
@@ -138,6 +187,7 @@ class ScraperService:
                 logger.error(f"Trend scrape failed for {source_url}: {str(e)}")
                 continue
         
+        scraped_data_cache.trend_cache.set(topic, trends)
         return trends
     
     async def scrape_content_ideas(self, niche: str) -> list:
@@ -145,8 +195,15 @@ class ScraperService:
         Scrape for content inspiration (Wikipedia, forums, blogs)
         Returns list of content ideas with sources
         """
+        cache_key = f"ideas:{niche}"
+        cached = scraped_data_cache.topic_cache.get(cache_key)
+        if cached is not None:
+            logger.debug(f"Cache hit for content ideas: {niche}")
+            return cached
+
         ideas = []
         
+        # Sources to scrape for trends
         sources = [
             f"https://en.wikipedia.org/wiki/Special:Search?search={niche}",
             f"https://www.google.com/search?q={niche}+site:forums.reddit.com",
@@ -176,6 +233,7 @@ class ScraperService:
                 logger.error(f"Content ideas scrape failed: {str(e)}")
                 continue
         
+        scraped_data_cache.topic_cache.set(cache_key, ideas)
         return ideas
     
     async def scrape_audience_discourse(self, topic: str) -> dict:
@@ -183,6 +241,11 @@ class ScraperService:
         Scrape discussions, Q&A sites, forums for audience questions
         Returns structured audience discourse data
         """
+        cached = scraped_data_cache.audience_cache.get(topic)
+        if cached is not None:
+            logger.debug(f"Cache hit for audience discourse: {topic}")
+            return cached
+
         discourse = {
             "topic": topic,
             "questions": [],
@@ -218,6 +281,7 @@ class ScraperService:
                 logger.error(f"Discourse scrape failed: {str(e)}")
                 continue
         
+        scraped_data_cache.audience_cache.set(topic, discourse)
         return discourse
     
     async def scrape_social_proof(self, creator_name: str) -> dict:

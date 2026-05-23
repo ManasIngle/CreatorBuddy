@@ -5,7 +5,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from app.config import settings
 from app.routers import (
     auth, channels, competitors, gaps, scripts,
-    hooks, thumbnails, trends, audience
+    hooks, thumbnails, trends, audience, research
 )
 from app.utils.resilience import CircuitBreakerManager
 import logging
@@ -67,6 +67,7 @@ app.include_router(hooks.router, prefix="/api/v1/hooks", tags=["hooks"])
 app.include_router(thumbnails.router, prefix="/api/v1/thumbnails", tags=["thumbnails"])
 app.include_router(trends.router, prefix="/api/v1/trends", tags=["trends"])
 app.include_router(audience.router, prefix="/api/v1/audience", tags=["audience"])
+app.include_router(research.router, prefix="/api/v1/research", tags=["research"])
 
 
 @app.get("/health", tags=["health"])
@@ -270,6 +271,26 @@ async def startup_event():
         logger.info("Async HTTP client initialized")
     except Exception as e:
         logger.warning(f"HTTP client initialization failed (non-critical): {e}")
+
+    # Recover stuck analyses on startup
+    try:
+        from app.database import get_db_session
+        from app.models.channel import Channel
+        from app.routers.channels import run_full_channel_analysis
+        import threading
+
+        with get_db_session() as db:
+            stuck_channels = db.query(Channel).filter(Channel.analysis_status == "running").all()
+            for channel in stuck_channels:
+                logger.info(f"Recovering stuck analysis for channel: {channel.id}")
+                thread = threading.Thread(
+                    target=run_full_channel_analysis,
+                    args=(str(channel.id), channel.uploads_playlist_id)
+                )
+                thread.daemon = True
+                thread.start()
+    except Exception as e:
+        logger.warning(f"Failed to recover stuck analyses on startup: {e}")
 
 
 @app.on_event("shutdown")

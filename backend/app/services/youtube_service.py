@@ -5,8 +5,30 @@ from typing import List, Optional, Dict, Any
 from app.config import settings
 import httpx
 import logging
+import json
 
 logger = logging.getLogger(__name__)
+
+
+# ── Redis cache helpers for YouTube API ─────────────────────────────────
+async def _get_cached(key: str) -> Optional[Any]:
+    """Get value from Redis cache (non-blocking, returns None on failure)."""
+    try:
+        from app.services.redis_cache import redis_cache
+        await redis_cache.initialize()
+        return await redis_cache.get(key)
+    except Exception:
+        return None
+
+async def _set_cached(key: str, value: Any, ttl: int = 3600) -> None:
+    """Set value in Redis cache (fire-and-forget)."""
+    try:
+        from app.services.redis_cache import redis_cache
+        await redis_cache.initialize()
+        await redis_cache.set(key, value, ttl=ttl)
+    except Exception:
+        pass
+
 
 def get_youtube_client(access_token: Optional[str] = None):
     """
@@ -46,6 +68,23 @@ def fetch_channel_details(channel_id: str) -> Dict[str, Any]:
         "country": item["snippet"].get("country"),
         "uploads_playlist_id": item["contentDetails"]["relatedPlaylists"]["uploads"]
     }
+
+
+async def fetch_channel_details_cached(channel_id: str) -> Dict[str, Any]:
+    """
+    Cached version of fetch_channel_details.
+    Cache TTL: 1 hour — channel metadata rarely changes.
+    Saves 1 YouTube API quota unit per cache hit.
+    """
+    cache_key = f"yt:channel:{channel_id}"
+    cached = await _get_cached(cache_key)
+    if cached is not None:
+        logger.debug(f"Cache hit for channel {channel_id}")
+        return cached
+    
+    result = fetch_channel_details(channel_id)
+    await _set_cached(cache_key, result, ttl=3600)  # 1 hour
+    return result
 
 def fetch_channel_videos(uploads_playlist_id: str, max_results: int = 50) -> List[Dict]:
     """

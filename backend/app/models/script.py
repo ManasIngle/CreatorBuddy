@@ -9,7 +9,7 @@ class Script(Base):
     __tablename__ = "scripts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     channel_id = Column(UUID(as_uuid=True), ForeignKey("channels.id"), nullable=True)
 
     # Input context

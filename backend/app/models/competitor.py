@@ -9,7 +9,7 @@ class Competitor(Base):
     __tablename__ = "competitors"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    channel_id = Column(UUID(as_uuid=True), ForeignKey("channels.id"), nullable=False)
+    channel_id = Column(UUID(as_uuid=True), ForeignKey("channels.id"), nullable=False, index=True)
     youtube_channel_id = Column(String(100), nullable=False, index=True)
     title = Column(String(500), nullable=False)
     subscriber_count = Column(Integer, default=0)
