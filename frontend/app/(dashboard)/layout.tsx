@@ -6,15 +6,31 @@ import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import { MobileNav } from "./MobileNav";
 
+import { channelsApi } from "@/lib/api";
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { accessToken } = useStore();
+  const { accessToken, activeChannel, setActiveChannel } = useStore();
   const router = useRouter();
 
   useEffect(() => {
     if (!accessToken && !localStorage.getItem("access_token")) {
       router.push("/login");
+      return;
     }
-  }, [accessToken, router]);
+
+    // Direct new users who haven't completed onboarding/connected a channel
+    if (accessToken || localStorage.getItem("access_token")) {
+      channelsApi.list().then((res) => {
+        if (res.data.length === 0) {
+          router.push("/onboarding");
+        } else if (!activeChannel) {
+          setActiveChannel(res.data[0]);
+        }
+      }).catch(() => {
+        // Fallback silently if API is offline
+      });
+    }
+  }, [accessToken, activeChannel, router, setActiveChannel]);
 
   return (
     <div className="flex h-screen bg-surface text-white overflow-hidden">
