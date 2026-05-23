@@ -76,6 +76,39 @@ Rate limiting is configured but not yet enforced. Expected limits:
 - Pro tier: 1000 requests/minute
 - Agency tier: 5000 requests/minute
 
+## [1.1.0] - 2026-05-23
+
+### Added
+
+#### SaaS Plan Enforcements & Gating
+- Connected YouTube channels limits: Free/Starter (1 max), Pro (5 max), Agency (25 max).
+- Competitor tracking limits: Free (3 max), Starter (5 max), Pro (10 max), Agency (25 max).
+- Monthly script generation limits: Free (3 scripts/mo), Starter (15 scripts/mo), Pro/Agency (unlimited).
+- Token budget gating: Active token allowance checks on hook and script generation.
+- Dynamic subscription tiers support: Integrated plan column checks on user profile with PUT `/api/v1/auth/plan` updating plan instantly.
+
+#### Technical AI & Model Upgrades
+- Primary OpenRouter models upgraded: Llama 3.1 8B, Claude 3.5 Haiku, Claude 3.5 Sonnet, Gemini 1.5 Flash.
+- Modern Model Costing structures: Synced local estimation trackers to match modern token rates.
+- AI Model Cost Routing: Integrated `complexity="simple"` for title and hook generation (saving ~70% token costs).
+- Deprecated legacy `openai_service.py` with a thin re-export warning shim.
+
+#### Caching & Web Scraping Optimization
+- YouTube API caching: Redis cache helpers for channel metadata details (1-hour TTL) inside `connect_channel`.
+- Distributed Scraping Cache: Synchronized `CacheManager` with Redis-backed namespace caching for topic research, trends, audience insights, and SEO data.
+- Fallback Web Scraper HTML parsing: Added standard library `HTMLTextExtractor` and `clean_html` regex helpers in `_fallback_scrape` to clean HTML code and save LLM token waste.
+
+#### Database & Server Optimization
+- Connection Pool Scaling: Reduced SQLAlchemy engine pool from 50 to 15 (5 base, 10 overflow) to protect PostgreSQL limits.
+- Foreign Key Database Indexes: Created manual Alembic baseline migration script `20260523_1000_add_missing_indexes.py` for `user_id` and `channel_id` indexes.
+- Startup Recovery: Added daemon thread restart triggers inside FastAPI `startup_event` to resume stuck channel analyses.
+
+#### Frontend Core Additions & UX
+- **Root Landing Page (`/`)**: Implemented a responsive glassmorphic landing page showcasing features, CTAs, UI mockup, and creator pricing.
+- **Fullscreen Onboarding Flow (`/onboarding`)**: Implemented a multi-step fullscreen onboarding wizard with profiles setup, channel connections, and real-time database AI sync checkmarks.
+- **TanStack Query staleTime Defaults**: Implemented global `Providers` QueryClient setup with 5-minute staleTime and 30-minute gcTime.
+- **Pricing Management Modal**: Developed interactive subscription grid in `settings/page.tsx` + upsell cards in sidebar layout.
+
 ## [Unreleased]
 
 ### Added
