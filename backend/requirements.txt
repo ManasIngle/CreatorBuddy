@@ -20,7 +20,12 @@ youtube-transcript-api==0.6.2
 python-dotenv==1.0.1
 tiktoken==0.7.0
 tenacity==8.3.0
+selectolax==0.3.21
 firecrawl-py>=0.1.0
+# Optional: for JS-rendered page fallback. Install separately:
+#   pip install playwright==1.44.0
+#   playwright install chromium
+# (skipped from default requirements to keep image small)
 # Dev/test dependencies
 pytest==8.2.2
 pytest-asyncio==0.23.7
