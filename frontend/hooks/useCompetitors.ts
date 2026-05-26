@@ -23,8 +23,6 @@ export function useCompetitors(channelId: string | undefined) {
     refetchOnWindowFocus: true,
     // Retry failed requests up to 2 times
     retry: 2,
-    // Don't refetch if already loading
-    refetchIfStale: true,
   });
 
   const addCompetitor = useMutation({

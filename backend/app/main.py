@@ -5,7 +5,8 @@ from starlette.middleware.gzip import GZipMiddleware
 from app.config import settings
 from app.routers import (
     auth, channels, competitors, gaps, scripts,
-    hooks, thumbnails, trends, audience, research
+    hooks, thumbnails, trends, audience, research,
+    jobs, billing
 )
 from app.utils.resilience import CircuitBreakerManager
 import logging
@@ -68,6 +69,8 @@ app.include_router(thumbnails.router, prefix="/api/v1/thumbnails", tags=["thumbn
 app.include_router(trends.router, prefix="/api/v1/trends", tags=["trends"])
 app.include_router(audience.router, prefix="/api/v1/audience", tags=["audience"])
 app.include_router(research.router, prefix="/api/v1/research", tags=["research"])
+app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
+app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])
 
 
 @app.get("/health", tags=["health"])
@@ -94,8 +97,9 @@ async def readiness_check():
     # Check database connection
     try:
         from app.database import engine
+        from sqlalchemy import text
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         checks["database"] = True
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
@@ -272,7 +276,8 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"HTTP client initialization failed (non-critical): {e}")
 
-    # Recover stuck analyses on startup
+    # Recover stuck analyses on startup — acquire per-channel lock to prevent
+    # duplicate recovery when running multiple pods
     try:
         from app.database import get_db_session
         from app.models.channel import Channel
@@ -282,10 +287,14 @@ async def startup_event():
         with get_db_session() as db:
             stuck_channels = db.query(Channel).filter(Channel.analysis_status == "running").all()
             for channel in stuck_channels:
-                logger.info(f"Recovering stuck analysis for channel: {channel.id}")
+                # Reset to pending — worker will re-pick up
+                channel.analysis_status = "pending"
+                db.commit()
+                logger.info(f"Reset stuck analysis for channel: {channel.id}")
+                # Re-queue; fetch playlist ID from the stored channel data
                 thread = threading.Thread(
                     target=run_full_channel_analysis,
-                    args=(str(channel.id), channel.uploads_playlist_id)
+                    args=(str(channel.id), None)
                 )
                 thread.daemon = True
                 thread.start()

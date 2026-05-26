@@ -7,6 +7,7 @@ from app.models.script import Script
 from app.utils.auth_utils import get_current_user
 from app.intelligence.script_generator import ScriptGenerator
 from app.schemas.script import ScriptCreateRequest, ScriptResponse
+from app.deps import check_script_monthly_limit, check_token_budget, rate_limit
 from typing import List
 import logging
 
@@ -19,7 +20,10 @@ generator = ScriptGenerator()
 def generate_script(
     request: ScriptCreateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    _plan: None = Depends(check_script_monthly_limit),
+    _budget: None = Depends(check_token_budget),
+    _rate: None = Depends(rate_limit("script_generate")),
 ):
     """
     Generates a complete script in 3 steps:
@@ -40,40 +44,6 @@ def generate_script(
             Channel.id == request.channel_id,
             Channel.user_id == current_user.id
         ).first()
-
-    # Enforce plan limits for monthly script generation
-    from datetime import datetime
-    now = datetime.utcnow()
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    
-    script_count = db.query(Script).filter(
-        Script.user_id == current_user.id,
-        Script.created_at >= month_start
-    ).count()
-    
-    plan_script_limits = {
-        "free": 3,
-        "starter": 15,
-        "pro": 99999,
-        "agency": 99999
-    }
-    
-    user_plan = current_user.plan or "free"
-    limit = plan_script_limits.get(user_plan, 3)
-    if script_count >= limit:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Script generation limit reached for {user_plan.capitalize()} plan ({limit} script{'s' if limit > 1 else ''} per month). Please upgrade to generate more."
-        )
-
-    # Enforce daily/monthly token budget limits
-    from app.services.token_budget import TokenBudgetManager
-    usage = TokenBudgetManager.get_usage(str(current_user.id), user_plan)
-    if not usage["can_proceed"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Token budget exceeded for the current billing period. Please upgrade your plan."
-        )
 
     # Create script record
     script = Script(

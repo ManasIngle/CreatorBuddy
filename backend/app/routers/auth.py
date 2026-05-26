@@ -149,3 +149,14 @@ def update_user_plan(
     db.refresh(current_user)
     logger.info(f"User {current_user.email} updated plan to {new_plan}")
     return current_user
+
+
+@router.get("/usage", tags=["auth"])
+def get_usage(current_user: User = Depends(get_current_user)):
+    """
+    Return current token usage and budget status for the authenticated user.
+    Used by the frontend usage bar in settings / sidebar.
+    """
+    from app.services.token_budget import TokenBudgetManager
+    plan = current_user.plan or "free"
+    return TokenBudgetManager.get_usage(str(current_user.id), plan)

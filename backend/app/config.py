@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # OpenRouter model configuration
     LLM_MODEL: str = "openai/gpt-4o-mini"  # Default for content generation
     VISION_MODEL: str = "anthropic/claude-3.5-haiku"  # For thumbnail vision analysis
-    EMBEDDING_MODEL: str = "openai/gpt-4o-mini"  # For embeddings (falls back to text-embedding-3-small)
+    EMBEDDING_MODEL: str = "openai/text-embedding-3-small"  # Actual embedding model
     
     # OpenRouter site info for analytics
     OPENROUTER_SITE_URL: str = "https://creatoriq.app"

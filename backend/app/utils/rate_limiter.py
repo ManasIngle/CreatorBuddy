@@ -190,3 +190,32 @@ auth_rate_limit = get_rate_limit_middleware("auth")
 write_rate_limit = get_rate_limit_middleware("write")
 script_rate_limit = get_rate_limit_middleware("script")
 analysis_rate_limit = get_rate_limit_middleware("analysis")
+
+
+# ---------------------------------------------------------------------------
+# Convenience function used by deps.py
+# ---------------------------------------------------------------------------
+
+def check_rate_limit(key: str, limit: int, window_seconds: int = 60) -> bool:
+    """
+    Check if `key` is within rate limit using the default in-memory limiter.
+    Returns True if the request is allowed, False if it should be rejected.
+
+    For distributed deployments, swap the backing store for Redis:
+        r = redis.from_url(settings.REDIS_URL)
+        count = r.incr(key)
+        if count == 1:
+            r.expire(key, window_seconds)
+        return count <= limit
+    """
+    # Reuse or create a per-(limit,window) limiter to avoid recreating on every call
+    store_key = f"{limit}:{window_seconds}"
+    if store_key not in _limiter_registry:
+        _limiter_registry[store_key] = InMemoryRateLimiter(limit, window_seconds)
+    limiter = _limiter_registry[store_key]
+    allowed, _ = limiter.is_allowed(key)
+    return allowed
+
+
+# Registry so we don't recreate limiters on every request
+_limiter_registry: Dict[str, InMemoryRateLimiter] = {}
