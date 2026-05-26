@@ -49,7 +49,7 @@ class GapDetector:
     # Public API
     # ------------------------------------------------------------------
 
-    def detect_gaps(self, channel: Channel, db: Session) -> List[Dict]:
+    def detect_gaps(self, channel: Channel, db: Session, user_id: Optional[str] = None) -> List[Dict]:
         """
         Embedding-based gap detection.  Fast, cheap, data-driven.
 
@@ -68,13 +68,14 @@ class GapDetector:
         if not candidates:
             return []
 
-        return self._synthesize_gaps(candidates, channel, extra_context="")
+        return self._synthesize_gaps(candidates, channel, extra_context="", user_id=user_id)
 
     async def enhanced_gap_detection(
         self,
         channel: Channel,
         db: Session,
         include_web_scrape: bool = True,
+        user_id: Optional[str] = None,
     ) -> Dict:
         """
         Enhanced gap detection that layers web scraping on top of embedding-based detection.
@@ -122,7 +123,7 @@ class GapDetector:
             )
 
         # Step 2: ONE LLM call using enriched context
-        gaps = self._synthesize_gaps(candidates, channel, extra_context=scraped_context)
+        gaps = self._synthesize_gaps(candidates, channel, extra_context=scraped_context, user_id=user_id)
 
         return {
             "base_gaps": gaps,
@@ -235,6 +236,7 @@ class GapDetector:
         candidate_titles: List[str],
         channel: Channel,
         extra_context: str = "",
+        user_id: Optional[str] = None,
     ) -> List[Dict]:
         """
         Single LLM call that clusters candidates into N gaps, scores each,
@@ -270,6 +272,7 @@ class GapDetector:
                 complexity="medium",
                 max_tokens=800,
                 operation="gap_detection",
+                user_id=user_id,
                 cache_ttl=43200,  # 12h — gaps are relatively stable
             )
             data = safe_json_loads(response)

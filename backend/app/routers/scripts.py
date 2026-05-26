@@ -58,16 +58,17 @@ def generate_script(
     db.commit()
 
     try:
-        titles = generator.generate_titles(request.topic, channel) if channel else []
+        titles = generator.generate_titles(request.topic, channel, user_id=str(current_user.id)) if channel else []
         selected_title = titles[0]["title"] if titles else request.topic
-        hook = generator.generate_hook(request.topic, channel, selected_title) if channel else ""
+        hook = generator.generate_hook(request.topic, channel, selected_title, user_id=str(current_user.id)) if channel else ""
         full = generator.generate_full_script(
             topic=request.topic,
             title=selected_title,
             hook=hook,
             channel=channel,
             target_duration_minutes=request.target_duration_minutes,
-            format_type=request.format_type
+            format_type=request.format_type,
+            user_id=str(current_user.id),
         )
 
         script.title_suggestions = [t["title"] if isinstance(t, dict) else str(t) for t in titles]

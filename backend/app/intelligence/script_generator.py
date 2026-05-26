@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class ScriptGenerator:
 
-    def generate_titles(self, topic: str, channel: Channel) -> List[Dict]:
+    def generate_titles(self, topic: str, channel: Channel, user_id: Optional[str] = None) -> List[Dict]:
         """Generate title suggestions for a video topic."""
         prompt = TITLE_SUGGESTIONS_PROMPT.format(
             topic=topic,
@@ -26,7 +26,9 @@ class ScriptGenerator:
                 system_prompt="You are a YouTube title expert. Return JSON only.",
                 user_prompt=prompt,
                 response_format="json",
-                complexity="simple"
+                complexity="simple",
+                user_id=user_id,
+                operation="script_titles",
             )
             data = safe_json_loads(response)
             return data.get("titles", [])
@@ -34,7 +36,7 @@ class ScriptGenerator:
             logger.error(f"Title generation failed: {e}")
             return []
 
-    def generate_hook(self, topic: str, channel: Channel, title: str) -> str:
+    def generate_hook(self, topic: str, channel: Channel, title: str, user_id: Optional[str] = None) -> str:
         """Generate a hook for the given topic and title."""
         prompt = SCRIPT_HOOK_PROMPT.format(
             topic=topic,
@@ -47,7 +49,9 @@ class ScriptGenerator:
             return call_openai(
                 system_prompt="You are an expert at writing viral YouTube hooks. Write the hook only, no preamble.",
                 user_prompt=prompt,
-                complexity="simple"
+                complexity="simple",
+                user_id=user_id,
+                operation="script_hook",
             )
         except Exception as e:
             logger.error(f"Hook generation failed: {e}")
@@ -60,7 +64,8 @@ class ScriptGenerator:
         hook: str,
         channel: Channel,
         target_duration_minutes: int = 10,
-        format_type: str = "educational"
+        format_type: str = "educational",
+        user_id: Optional[str] = None,
     ) -> Dict[str, str]:
         """Generate a full script with the given parameters."""
         prompt = FULL_SCRIPT_PROMPT.format(
@@ -79,8 +84,10 @@ class ScriptGenerator:
             script_text = call_openai(
                 system_prompt="You are a professional YouTube scriptwriter. Write complete, detailed scripts.",
                 user_prompt=prompt,
-                max_tokens=4000,  # Full script needs high token limit
-                complexity="complex"  # Full scripts need premium quality
+                max_tokens=4000,
+                complexity="complex",
+                user_id=user_id,
+                operation="script_full",
             )
             return {
                 "full_script": script_text,

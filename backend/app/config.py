@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
 
-    # OpenRouter model configuration
-    LLM_MODEL: str = "openai/gpt-4o-mini"  # Default for content generation
-    VISION_MODEL: str = "anthropic/claude-3.5-haiku"  # For thumbnail vision analysis
-    EMBEDDING_MODEL: str = "openai/text-embedding-3-small"  # Actual embedding model
+    # OpenRouter model configuration — using free models as of May 2026
+    LLM_MODEL: str = "nvidia/nemotron-3-super-120b-a12b:free"  # Default for medium-complexity content gen
+    VISION_MODEL: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"  # Multimodal: text/image/video
+    EMBEDDING_MODEL: str = "openai/text-embedding-3-small"  # Embeddings still go via direct OpenAI
     
     # OpenRouter site info for analytics
     OPENROUTER_SITE_URL: str = "https://creatoriq.app"

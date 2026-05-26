@@ -37,6 +37,8 @@ def detect_content_gaps(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
+    user_id_str = str(current_user.id)
+
     def run_detection():
         from app.database import SessionLocal
         from app.intelligence.gap_detector import GapDetector
@@ -51,7 +53,7 @@ def detect_content_gaps(
                 return
             
             detector = GapDetector()
-            gaps = detector.detect_gaps(channel, db)
+            gaps = detector.detect_gaps(channel, db, user_id=user_id_str)
             
             for gap_data in gaps:
                 gap = ContentGap(

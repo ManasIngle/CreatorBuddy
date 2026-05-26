@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 from app.services.openrouter_service import call_openai, safe_json_loads
 from app.prompts.creator_prompts import CREATOR_PROFILE_PROMPT
 from app.services.context_optimizer import (
@@ -19,7 +19,8 @@ class CreatorAnalyzer:
         self,
         channel_title: str,
         top_video_data: List[Dict],
-        subscriber_count: int
+        subscriber_count: int,
+        user_id: Optional[str] = None,
     ) -> Dict:
         """
         Builds creator profile from their top video data.
@@ -59,7 +60,9 @@ class CreatorAnalyzer:
                 system_prompt="Analyze YouTube creator. Return JSON only. Be concise.",
                 user_prompt=prompt,
                 response_format="json",
-                complexity="medium"
+                complexity="medium",
+                user_id=user_id,
+                operation="creator_profile",
             )
             return safe_json_loads(response)
         except Exception as e:

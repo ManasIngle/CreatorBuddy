@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from app.models.video import Video
 from app.models.hook import Hook
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class HookEngine:
 
-    def analyze_viral_hooks(self, channel: Channel, db: Session) -> List[Dict]:
+    def analyze_viral_hooks(self, channel: Channel, db: Session, user_id: Optional[str] = None) -> List[Dict]:
         """
         Analyzes viral hooks with optimized context.
         Uses hook excerpts only (already short) with reduced count.
@@ -47,7 +47,9 @@ class HookEngine:
                 system_prompt="You are a YouTube retention expert. Return JSON only. Be concise.",
                 user_prompt=prompt,
                 response_format="json",
-                complexity="medium"
+                complexity="medium",
+                user_id=user_id,
+                operation="hook_analysis",
             )
             data = safe_json_loads(response)
             return data.get("patterns", [])
@@ -59,7 +61,8 @@ class HookEngine:
         self,
         topic: str,
         channel: Channel,
-        count: int = 5
+        count: int = 5,
+        user_id: Optional[str] = None,
     ) -> List[Dict]:
         """Generate multiple hook variations for a given topic."""
         prompt = HOOK_GENERATION_PROMPT.format(
@@ -73,7 +76,9 @@ class HookEngine:
                 system_prompt="You are a hook writing expert. Return JSON only.",
                 user_prompt=prompt,
                 response_format="json",
-                complexity="medium"
+                complexity="medium",
+                user_id=user_id,
+                operation="hook_generation",
             )
             data = safe_json_loads(response)
             return data.get("hooks", [])

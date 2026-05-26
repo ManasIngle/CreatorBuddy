@@ -32,6 +32,7 @@ def run_full_channel_analysis(channel_id: str, uploads_playlist_id: str = None):
         fetch_transcript
     )
     from app.services.openrouter_service import get_embedding
+    from app.services.embedding_service import get_content_embedding
     from app.intelligence.creator_analyzer import CreatorAnalyzer
     from app.prompts.creator_prompts import CREATOR_PROFILE_PROMPT
     from app.utils.cache_manager import scraped_data_cache
@@ -114,7 +115,8 @@ def run_full_channel_analysis(channel_id: str, uploads_playlist_id: str = None):
                 profile = analyzer.analyze_creator(
                     channel_title=channel.title,
                     top_video_data=transcripts_collected[:5],
-                    subscriber_count=channel.subscriber_count
+                    subscriber_count=channel.subscriber_count,
+                    user_id=str(channel.user_id),
                 )
                 channel.niche = profile.get("niche")
                 channel.niche_tags = profile.get("niche_tags", [])
@@ -127,6 +129,36 @@ def run_full_channel_analysis(channel_id: str, uploads_playlist_id: str = None):
             channel.last_analyzed_at = datetime.utcnow()
             channel.analysis_status = "done"
             db.commit()
+
+            # Step 6: Generate embeddings for the top videos so gap detection
+            # can use vector similarity. Done last so a failure here doesn't
+            # roll back the analysis itself.
+            try:
+                top_for_embedding = (
+                    db.query(Video)
+                    .filter(Video.channel_id == channel_id, Video.is_competitor_video == False)
+                    .order_by(Video.view_count.desc())
+                    .limit(50)
+                    .all()
+                )
+                for v in top_for_embedding:
+                    if v.content_embedding is not None:
+                        continue
+                    try:
+                        # Embed title + first 500 chars of transcript if available
+                        text_to_embed = v.title
+                        if v.transcript:
+                            text_to_embed = f"{v.title}\n{v.transcript[:500]}"
+                        emb = get_content_embedding(text_to_embed)
+                        # Skip the zero-vector fallback (means embedding failed)
+                        if emb and any(x != 0.0 for x in emb[:10]):
+                            v.content_embedding = emb
+                    except Exception as e:
+                        logger.debug(f"Skip embedding for video {v.id}: {e}")
+                db.commit()
+                logger.info(f"Generated embeddings for {len(top_for_embedding)} videos on channel {channel_id}")
+            except Exception as e:
+                logger.warning(f"Embedding pass failed for channel {channel_id}: {e}")
 
             # Invalidate cache after successful analysis
             import asyncio

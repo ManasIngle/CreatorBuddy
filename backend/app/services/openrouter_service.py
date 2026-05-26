@@ -18,16 +18,52 @@ logger = logging.getLogger(__name__)
 # OpenRouter API configuration
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-# Model configurations for cost optimization
+# Model configurations — 0 cost for all free models (May 2026 free tier)
 MODEL_COSTS = {
-    # Cost per million tokens (input, output) - approximate values
+    # ---- Free tier (May 26, 2026 — verified live via /api/v1/models) ----
+    "google/gemma-4-31b-it:free":                              (0.0, 0.0),
+    "google/gemma-4-26b-a4b-it:free":                          (0.0, 0.0),
+    "meta-llama/llama-3.3-70b-instruct:free":                  (0.0, 0.0),
+    "meta-llama/llama-3.2-3b-instruct:free":                   (0.0, 0.0),
+    "nvidia/nemotron-3-super-120b-a12b:free":                  (0.0, 0.0),
+    "nvidia/nemotron-3-nano-30b-a3b:free":                     (0.0, 0.0),
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free":      (0.0, 0.0),
+    "nvidia/nemotron-nano-12b-v2-vl:free":                     (0.0, 0.0),
+    "nvidia/nemotron-nano-9b-v2:free":                         (0.0, 0.0),
+    "nousresearch/hermes-3-llama-3.1-405b:free":               (0.0, 0.0),
+    "qwen/qwen3-next-80b-a3b-instruct:free":                   (0.0, 0.0),
+    "qwen/qwen3-coder:free":                                   (0.0, 0.0),
+    "z-ai/glm-4.5-air:free":                                   (0.0, 0.0),
+    "deepseek/deepseek-v4-flash:free":                         (0.0, 0.0),
+    "minimax/minimax-m2.5:free":                               (0.0, 0.0),
+    "openai/gpt-oss-120b:free":                                (0.0, 0.0),
+    "openai/gpt-oss-20b:free":                                 (0.0, 0.0),
+    "openrouter/free":                                         (0.0, 0.0),  # auto-router
+    # ---- Paid (kept for cost-tracking when free tier is exhausted) ----
     "openai/gpt-4o-mini": (0.15, 0.60),
     "openai/gpt-4o": (2.50, 10.00),
     "anthropic/claude-3.5-haiku": (0.80, 4.00),
     "anthropic/claude-3.5-sonnet": (3.00, 15.00),
     "meta-llama/llama-3.1-8b-instruct": (0.05, 0.05),
-    "mistralai/mixtral-8x7b": (0.24, 0.24),
-    "google/gemini-flash-1.5": (0.075, 0.30),
+}
+
+# Fallback chain — when primary returns 429 / 503 we cycle through these
+FREE_MODEL_FALLBACKS = {
+    "simple":  ["google/gemma-4-31b-it:free",
+                "meta-llama/llama-3.3-70b-instruct:free",
+                "qwen/qwen3-next-80b-a3b-instruct:free",
+                "openrouter/free"],
+    "medium":  ["nvidia/nemotron-3-super-120b-a12b:free",
+                "qwen/qwen3-next-80b-a3b-instruct:free",
+                "z-ai/glm-4.5-air:free",
+                "openrouter/free"],
+    "complex": ["nousresearch/hermes-3-llama-3.1-405b:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
+                "qwen/qwen3-next-80b-a3b-instruct:free",
+                "openrouter/free"],
+    "vision":  ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+                "google/gemma-4-31b-it:free",
+                "nvidia/nemotron-nano-12b-v2-vl:free"],
 }
 
 # Model mappings for OpenRouter (provider/model format)
@@ -49,22 +85,26 @@ client = OpenAI(
 
 def _get_model_for_complexity(complexity: str = "medium") -> str:
     """
-    Select appropriate model based on task complexity for cost optimization.
-    
-    Complexity levels:
-    - ultra_cheap: Llama 3.1 8B for simple extractions, classifications
-    - simple:      GPT-4o-mini for basic transformations and hooks
-    - medium:      GPT-4o-mini (default) for standard analysis
-    - complex:     Claude 3.5 Sonnet for nuanced reasoning and long scripts
+    Select model based on task complexity.
+    All defaults are free models (May 2026 free tier).
     """
+    chain = FREE_MODEL_FALLBACKS.get(complexity)
+    if chain:
+        return chain[0]
     if complexity == "ultra_cheap":
-        return "meta-llama/llama-3.1-8b-instruct"
-    elif complexity == "simple":
-        return "openai/gpt-4o-mini"
-    elif complexity == "complex":
-        return "anthropic/claude-3.5-sonnet"
-    else:
-        return DEFAULT_LLM_MODEL
+        return "meta-llama/llama-3.2-3b-instruct:free"
+    return DEFAULT_LLM_MODEL
+
+
+def _fallback_chain(model: str, complexity: Optional[str]) -> list[str]:
+    """Build the ordered list of models to try, preferring the chosen tier's chain."""
+    if complexity and complexity in FREE_MODEL_FALLBACKS:
+        chain = list(FREE_MODEL_FALLBACKS[complexity])
+        # Make sure the explicit model is first if it's in the chain
+        if model in chain:
+            chain.remove(model)
+        return [model] + chain
+    return [model]
 
 
 # ---------------------------------------------------------------------------
@@ -170,15 +210,16 @@ def call_openai(
     """
     Central OpenRouter call for content generation.
 
-    Caching: deterministic calls (temperature=0) are cached by content hash.
-    Pass cache_ttl=0 to bypass the cache (e.g. for creative / non-deterministic calls).
+    Uses free models by default. Walks a fallback chain on 429/503 since
+    free models are heavily rate-limited.
 
-    Model selection priority: explicit model > complexity routing > DEFAULT_LLM_MODEL.
+    Caching: deterministic calls (temperature=0) are cached by content hash.
     """
     if model is None:
         model = _get_model_for_complexity(complexity) if complexity else DEFAULT_LLM_MODEL
 
     # --- LLM response cache ---
+    cache_key = None
     if cache_ttl > 0 and temperature == 0.0:
         cache_key = _llm_cache_key(model, system_prompt, user_prompt, response_format, max_tokens)
         cached = _get_llm_cached(cache_key)
@@ -190,31 +231,40 @@ def call_openai(
         {"role": "user", "content": user_prompt},
     ]
 
-    kwargs: Dict[str, Any] = {
-        "model": model,
+    base_kwargs: Dict[str, Any] = {
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
-
     if response_format == "json":
-        kwargs["response_format"] = {"type": "json_object"}
+        base_kwargs["response_format"] = {"type": "json_object"}
 
-    try:
-        response = client.chat.completions.create(**kwargs)
-        output = response.choices[0].message.content
+    # Try the chosen model, then the rest of its tier's free chain on transient errors
+    chain = _fallback_chain(model, complexity)
+    last_err: Optional[Exception] = None
+    for attempt_model in chain:
+        try:
+            response = client.chat.completions.create(model=attempt_model, **base_kwargs)
+            output = response.choices[0].message.content
 
-        # Persist to cache
-        if cache_ttl > 0 and temperature == 0.0:
-            _set_llm_cached(cache_key, output, ttl=cache_ttl)
+            if cache_key is not None:
+                _set_llm_cached(cache_key, output, ttl=cache_ttl)
+            _log_token_usage(attempt_model, system_prompt + user_prompt, output, operation, user_id)
+            return output
+        except Exception as e:
+            err_str = str(e).lower()
+            # Free models commonly 429 or 503; skip to next in chain
+            if any(s in err_str for s in ("429", "rate limit", "503", "service unavailable", "no providers")):
+                logger.warning(f"Model {attempt_model} unavailable ({type(e).__name__}); falling through chain")
+                last_err = e
+                continue
+            # Other errors (auth, bad request, etc.) — don't fall through
+            logger.error(f"OpenRouter API call failed on {attempt_model}: {e}")
+            raise
 
-        # Log token usage
-        _log_token_usage(model, system_prompt + user_prompt, output, operation, user_id)
-
-        return output
-    except Exception as e:
-        logger.error(f"OpenRouter API call failed: {e}")
-        raise
+    # Whole chain exhausted
+    logger.error(f"All free models exhausted for complexity={complexity}; last error: {last_err}")
+    raise last_err if last_err else RuntimeError("LLM call failed with no fallback succeeding")
 
 
 def call_openai_vision(
@@ -224,37 +274,38 @@ def call_openai_vision(
 ) -> str:
     """
     OpenRouter vision call for thumbnail analysis.
-    Uses vision-capable model (e.g., claude-3-haiku with vision).
-    Passes image as base64 data URI for OpenRouter compatibility.
+    Walks the free vision-model fallback chain on rate limit.
     """
     if model is None:
         model = DEFAULT_VISION_MODEL
-    
-    try:
-        # OpenRouter supports images via URL or base64
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_url, "detail": "high"}
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
-                    ]
-                }
-            ],
-            max_tokens=1000
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.error(f"OpenRouter vision call failed: {e}")
-        raise
+
+    chain = _fallback_chain(model, "vision")
+    last_err: Optional[Exception] = None
+    for attempt_model in chain:
+        try:
+            response = client.chat.completions.create(
+                model=attempt_model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": image_url, "detail": "high"}},
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+                max_tokens=1000,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            err_str = str(e).lower()
+            if any(s in err_str for s in ("429", "rate limit", "503", "no providers")):
+                logger.warning(f"Vision model {attempt_model} unavailable; trying next")
+                last_err = e
+                continue
+            logger.error(f"OpenRouter vision call failed on {attempt_model}: {e}")
+            raise
+    raise last_err if last_err else RuntimeError("All vision models exhausted")
 
 
 def call_openai_streaming(

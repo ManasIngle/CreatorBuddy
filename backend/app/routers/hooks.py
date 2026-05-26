@@ -49,7 +49,8 @@ def generate_hooks(
     hooks_data = hook_engine.generate_hooks_for_topic(
         topic=request.topic,
         channel=channel,
-        count=request.count
+        count=request.count,
+        user_id=str(current_user.id),
     )
 
     # Save generated hooks to database
