@@ -3,6 +3,11 @@ OpenRouter service for content generation.
 Provides unified API access to multiple LLM providers (OpenAI, Anthropic, Meta, etc.)
 with cost optimization, streaming support, token tracking, and content-addressable
 LLM response caching (40-60% cost reduction on warm niches).
+
+Provider routing:
+  - Default: OpenRouter (free models + fallback chain)
+  - When MINIMAX_API_KEY is set: 'complex' tier routes to MiniMax Token Plan
+    via its OpenAI-compatible endpoint. Falls back to OpenRouter on errors.
 """
 from openai import OpenAI
 from typing import Optional, Dict, Any, Iterator
@@ -45,6 +50,11 @@ MODEL_COSTS = {
     "anthropic/claude-3.5-haiku": (0.80, 4.00),
     "anthropic/claude-3.5-sonnet": (3.00, 15.00),
     "meta-llama/llama-3.1-8b-instruct": (0.05, 0.05),
+    # ---- MiniMax Token Plan / Coding Plan (paid subscription) ----
+    # Token Plan billing is by quota/seat, not strict per-token. Cost map
+    # values are kept for the cost logger only (rough estimates).
+    "MiniMax-M2.7": (0.30, 2.40),
+    "MiniMax-M2":   (0.20, 1.20),
 }
 
 # Fallback chain — when primary returns 429 / 503 we cycle through these.
@@ -92,11 +102,63 @@ client = OpenAI(
 )
 
 
+# ---------------------------------------------------------------------------
+# MiniMax Token Plan client (OpenAI-compatible endpoint)
+# ---------------------------------------------------------------------------
+# Token Plan subscription exposes an OpenAI-compatible /v1/chat/completions
+# endpoint, so we just point a second OpenAI SDK client at MiniMax's URL.
+# ---------------------------------------------------------------------------
+
+_minimax_client: Optional[OpenAI] = None
+if getattr(settings, "MINIMAX_API_KEY", None):
+    try:
+        _minimax_client = OpenAI(
+            base_url=settings.MINIMAX_BASE_URL,
+            api_key=settings.MINIMAX_API_KEY,
+        )
+        logger.info(
+            f"MiniMax Token Plan client ready ({settings.MINIMAX_MODEL}) — "
+            "complex tier will prefer MiniMax"
+        )
+    except Exception as e:
+        logger.warning(f"MiniMax client init failed; falling back to OpenRouter only: {e}")
+        _minimax_client = None
+
+
+def _provider_for(model: str) -> tuple[OpenAI, str]:
+    """
+    Return (client, normalised_model_id) for the given model identifier.
+
+    Routing rule:
+      - Models starting with 'minimax:' or matching MINIMAX_MODEL/_FAST go to
+        the MiniMax client (when configured).
+      - Everything else goes through OpenRouter.
+    """
+    if _minimax_client is not None:
+        if model.startswith("minimax:"):
+            return _minimax_client, model.split(":", 1)[1]
+        if model in (
+            getattr(settings, "MINIMAX_MODEL", ""),
+            getattr(settings, "MINIMAX_MODEL_FAST", ""),
+        ):
+            return _minimax_client, model
+    return client, model
+
+
 def _get_model_for_complexity(complexity: str = "medium") -> str:
     """
     Select model based on task complexity.
-    All defaults are free models (May 2026 free tier).
+    Prefers MiniMax (paid) when configured for complex/medium tiers.
+    Falls back to free OpenRouter chain.
     """
+    # Prefer MiniMax for complex when available
+    if _minimax_client is not None:
+        if complexity == "complex":
+            return getattr(settings, "MINIMAX_MODEL", "MiniMax-M2.5")
+        if complexity == "medium":
+            # Use the cheaper M2 model for medium-tier
+            return getattr(settings, "MINIMAX_MODEL_FAST", "MiniMax-M2")
+
     chain = FREE_MODEL_FALLBACKS.get(complexity)
     if chain:
         return chain[0]
@@ -106,14 +168,37 @@ def _get_model_for_complexity(complexity: str = "medium") -> str:
 
 
 def _fallback_chain(model: str, complexity: Optional[str]) -> list[str]:
-    """Build the ordered list of models to try, preferring the chosen tier's chain."""
+    """
+    Build the ordered list of models to try.
+
+    Order:
+      1. The explicit/primary model.
+      2. If MiniMax was the primary: also include the other MiniMax model
+         as backup (M2.5 ↔ M2).
+      3. Free OpenRouter chain for the tier (acts as universal fallback
+         when MiniMax has issues).
+    """
+    chain: list[str] = [model]
+
+    # If primary is MiniMax, add its sibling and then the free chain
+    if _minimax_client is not None and model in (
+        getattr(settings, "MINIMAX_MODEL", ""),
+        getattr(settings, "MINIMAX_MODEL_FAST", ""),
+    ):
+        sibling = (
+            getattr(settings, "MINIMAX_MODEL_FAST", "")
+            if model == getattr(settings, "MINIMAX_MODEL", "")
+            else getattr(settings, "MINIMAX_MODEL", "")
+        )
+        if sibling and sibling not in chain:
+            chain.append(sibling)
+
     if complexity and complexity in FREE_MODEL_FALLBACKS:
-        chain = list(FREE_MODEL_FALLBACKS[complexity])
-        # Make sure the explicit model is first if it's in the chain
-        if model in chain:
-            chain.remove(model)
-        return [model] + chain
-    return [model]
+        for m in FREE_MODEL_FALLBACKS[complexity]:
+            if m not in chain:
+                chain.append(m)
+
+    return chain
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +338,9 @@ def call_openai(
     last_err: Optional[Exception] = None
     for attempt_model in chain:
         try:
-            response = client.chat.completions.create(model=attempt_model, **base_kwargs)
+            # Route to MiniMax or OpenRouter depending on the model identifier
+            provider_client, normalised_model = _provider_for(attempt_model)
+            response = provider_client.chat.completions.create(model=normalised_model, **base_kwargs)
             output = response.choices[0].message.content
 
             # Some free models / the openrouter/free auto-router occasionally
@@ -300,8 +387,9 @@ def call_openai_vision(
     last_err: Optional[Exception] = None
     for attempt_model in chain:
         try:
-            response = client.chat.completions.create(
-                model=attempt_model,
+            provider_client, normalised_model = _provider_for(attempt_model)
+            response = provider_client.chat.completions.create(
+                model=normalised_model,
                 messages=[
                     {
                         "role": "user",

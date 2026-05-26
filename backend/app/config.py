@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     OPENROUTER_SITE_URL: str = "https://creatoriq.app"
     OPENROUTER_SITE_NAME: str = "CreatorIQ"
 
+    # ----- MiniMax Token / Coding Plan (paid subscription) -----
+    # Uses the OpenAI-compatible endpoint.
+    # Token Plan keys are NOT interchangeable with pay-as-you-go keys.
+    # Get key from: https://platform.minimax.io → Billing → Token Plan
+    MINIMAX_API_KEY: Optional[str] = None
+    MINIMAX_BASE_URL: str = "https://api.minimax.io/v1"
+    MINIMAX_MODEL: str = "MiniMax-M2.7"     # flagship coding/reasoning model
+    MINIMAX_MODEL_FAST: str = "MiniMax-M2"  # cheaper sibling for medium-tier
+
     class Config:
         env_file = ".env"
 
