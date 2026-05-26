@@ -47,22 +47,31 @@ MODEL_COSTS = {
     "meta-llama/llama-3.1-8b-instruct": (0.05, 0.05),
 }
 
-# Fallback chain — when primary returns 429 / 503 we cycle through these
+# Fallback chain — when primary returns 429 / 503 we cycle through these.
+# openrouter/free (auto-router) is last because it sometimes returns empty content.
 FREE_MODEL_FALLBACKS = {
     "simple":  ["google/gemma-4-31b-it:free",
                 "meta-llama/llama-3.3-70b-instruct:free",
                 "qwen/qwen3-next-80b-a3b-instruct:free",
+                "z-ai/glm-4.5-air:free",
+                "minimax/minimax-m2.5:free",
+                "openai/gpt-oss-20b:free",
                 "openrouter/free"],
     "medium":  ["nvidia/nemotron-3-super-120b-a12b:free",
                 "qwen/qwen3-next-80b-a3b-instruct:free",
                 "z-ai/glm-4.5-air:free",
+                "deepseek/deepseek-v4-flash:free",
+                "openai/gpt-oss-120b:free",
                 "openrouter/free"],
     "complex": ["nousresearch/hermes-3-llama-3.1-405b:free",
                 "nvidia/nemotron-3-super-120b-a12b:free",
+                "openai/gpt-oss-120b:free",
                 "qwen/qwen3-next-80b-a3b-instruct:free",
+                "z-ai/glm-4.5-air:free",
                 "openrouter/free"],
     "vision":  ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
                 "google/gemma-4-31b-it:free",
+                "google/gemma-4-26b-a4b-it:free",
                 "nvidia/nemotron-nano-12b-v2-vl:free"],
 }
 
@@ -246,6 +255,14 @@ def call_openai(
         try:
             response = client.chat.completions.create(model=attempt_model, **base_kwargs)
             output = response.choices[0].message.content
+
+            # Some free models / the openrouter/free auto-router occasionally
+            # return empty content. Treat that as a transient failure and try
+            # the next model in the chain.
+            if not output or not output.strip():
+                logger.warning(f"Model {attempt_model} returned empty content; trying next")
+                last_err = RuntimeError(f"empty response from {attempt_model}")
+                continue
 
             if cache_key is not None:
                 _set_llm_cached(cache_key, output, ttl=cache_ttl)
